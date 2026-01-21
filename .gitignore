@@ -49,7 +49,6 @@ yarn-error.log*
 Thumbs.db
 
 # Database
-*.db
 *.sqlite
 *.sqlite3
 
