@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios'; // You need to install axios
-import { CheckCircle, X } from 'lucide-react';
-import { Upload } from 'lucide-react';
+import { CheckCircle, X, Upload, ChevronDown } from 'lucide-react';
 
 const ConverterDashboard = () => {
   const [file, setFile] = useState(null);
@@ -9,6 +8,12 @@ const ConverterDashboard = () => {
   const [mappings, setMappings] = useState([{ target: '', source: '', rule: 'text' }]); // Form state
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false); // Toggle for full preview
+
+  // Handle download
+  const handleDownloadDataset = () => {
+    window.location.href = 'http://localhost:8000/api/download-dataset?source=converter';
+  };
 
   // 1. Handle File Upload
   const handleFileUpload = async (e) => {
@@ -97,7 +102,7 @@ const ConverterDashboard = () => {
 
       {/* Step 2: Detected Schema Table (Replaces st.dataframe) */}
       {schema && (
-        <div className="mb-8 bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="mb-8 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
           <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-medium text-sm text-slate-700">
             ℹ️ 1. Detected Schema
           </div>
@@ -117,6 +122,69 @@ const ConverterDashboard = () => {
               ))}
             </tbody>
           </table>
+
+          {/* Raw Data Preview Expander */}
+          <div className="border-t border-slate-200">
+            {/* Toggle Header */}
+            <div 
+              onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+              className="flex items-center justify-between px-4 py-3 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors group select-none"
+            >
+              <span className="text-sm font-bold text-slate-700 flex items-center gap-2 group-hover:text-blue-700 transition-colors">
+                📊 View Full Dataset
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownloadDataset();
+                  }}
+                  disabled={!schema}
+                  className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Download full dataset as CSV"
+                >
+                  ⬇️ Download
+                </button>
+                <ChevronDown 
+                  size={16} 
+                  className={`text-slate-400 transition-transform duration-300 ${isPreviewOpen ? 'rotate-180 text-blue-600' : ''}`} 
+                />
+              </div>
+            </div>
+
+            {/* Collapsible Body */}
+            {isPreviewOpen && (
+              <div className="animate-in slide-in-from-top duration-300">
+                <div className="max-h-96 overflow-auto border-t border-slate-200">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        {schema.columns.map((col) => (
+                          <th key={col} className="px-4 py-3 font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {schema.preview.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-blue-50 transition-colors">
+                          {schema.columns.map((col) => (
+                            <td key={col} className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                              {row[col] || '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-400 text-center uppercase tracking-widest font-semibold">
+                  ℹ️ Preview: First {schema.preview.length} rows of full dataset • Click Download to get all data
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

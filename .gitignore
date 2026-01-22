@@ -23,6 +23,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Database
+*.db
+certex_data.db
+
 # Node
 node_modules/
 npm-debug.log*

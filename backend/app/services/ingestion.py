@@ -2,6 +2,8 @@ import os
 import pandas as pd
 from openai import OpenAI
 from dotenv import load_dotenv
+from datetime import datetime
+import re
 
 load_dotenv()
 
@@ -10,6 +12,28 @@ client = OpenAI(
     api_key=os.getenv("ROUTER_API_KEY"),
     base_url="https://openrouter.ai/api/v1"
 )
+
+def add_detected_columns(df):
+    """Add auto-detected columns if they don't already exist."""
+    # Add Detected_Timestamp if not present
+    if "Detected_Timestamp" not in df.columns:
+        df["Detected_Timestamp"] = datetime.now().isoformat()
+    
+    # Add Detected_Email if not present (detect from data or use placeholder)
+    if "Detected_Email" not in df.columns:
+        df["Detected_Email"] = df.apply(
+            lambda row: next(
+                (str(val) for val in row if isinstance(val, str) and '@' in val),
+                "unknown@example.com"
+            ),
+            axis=1
+        )
+    
+    # Add Detected_Error_Code if not present
+    if "Detected_Error_Code" not in df.columns:
+        df["Detected_Error_Code"] = "NO_ERROR"
+    
+    return df
 
 def smart_parse_dataframe(df):
     """(Kept same as original) Adaptive Parsing Logic"""
@@ -25,6 +49,9 @@ def generate_sql_script(df, table_name="uploaded_data"):
     try:
         # Run smart parser first
         df = smart_parse_dataframe(df)
+        
+        # Add auto-detected columns
+        df = add_detected_columns(df)
 
         type_mapping = {'int64': 'INTEGER', 'float64': 'REAL', 'object': 'TEXT', 'bool': 'INTEGER'}
         columns_sql = [f'"{col}" {type_mapping.get(str(dtype), "TEXT")}' for col, dtype in df.dtypes.items()]

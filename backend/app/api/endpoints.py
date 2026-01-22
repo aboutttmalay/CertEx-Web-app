@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import Dict
 import json
 import io
+import pandas as pd
 
 # --- CHANGED: Direct imports for flat structure ---
 from app.services import structurer
@@ -12,12 +13,15 @@ from app.db import database
 
 router = APIRouter()
 
+# Store uploaded data for download
+uploaded_dataframes = {}
+
 # --- MODULE 1: UNSTRUCTURED CONVERTER ---
 
 @router.post("/analyze-file")
 async def analyze_file(file: UploadFile = File(...)):
     """
-    Receives a file, runs Auto-Discovery, returns Schema & Preview.
+    Receives a file, runs Auto-Discovery, returns Schema & Preview (first 10 rows).
     """
     content = await file.read()
     df, error = structurer.load_file_buffer(content, file.filename)
@@ -28,13 +32,36 @@ async def analyze_file(file: UploadFile = File(...)):
     # Run the "Brain" (Auto-Discovery)
     df = structurer.detect_and_expand_structure(df)
     
-    # Return JSON for React to render the table
+    # Store full dataframe for download
+    uploaded_dataframes['converter'] = df
+    
+    # Return only first 10 rows for preview
+    preview_df = df.head(10)
     return {
         "filename": file.filename,
         "columns": df.columns.tolist(),
-        "preview": df.head(5).fillna("").to_dict(orient="records"),
+        "preview": preview_df.fillna("").to_dict(orient="records"),  # Only 10 rows
         "total_rows": len(df)
     }
+
+@router.get("/download-dataset")
+async def download_dataset(source: str = "converter"):
+    """
+    Download full dataset as CSV.
+    source: 'converter' or 'sql'
+    """
+    if source not in uploaded_dataframes or uploaded_dataframes[source] is None:
+        raise HTTPException(status_code=400, detail="No dataset available")
+    
+    df = uploaded_dataframes[source]
+    csv_buffer = io.StringIO()
+    df.to_csv(csv_buffer, index=False)
+    
+    return StreamingResponse(
+        iter([csv_buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=full_dataset.csv"}
+    )
 
 @router.post("/transform-data")
 async def transform_data(
