@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import Dict
+from typing import Dict, List, Any
 import json
 import io
 import pandas as pd
@@ -115,19 +115,29 @@ async def ingest_sql(file: UploadFile = File(...)):
     
     return {"status": "success", "message": "Database built successfully"}
 
+# --- CHANGED: Updated Model to accept History ---
 class QueryRequest(BaseModel):
     question: str
+    history: List[Dict[str, Any]] = []  # Defaults to empty list, accepts any data type
 
 @router.post("/ask-agent")
 async def ask_agent(request: QueryRequest):
     """
-    The Chatbot Endpoint.
+    The Chatbot Endpoint with Memory.
     """
+    # --- DEBUG PRINT ---
+    print(f"\n🧠 INCOMING REQUEST:")
+    print(f"Question: {request.question}")
+    print(f"History Length: {len(request.history)}")
+    if request.history:
+        print(f"Last Context: {request.history[-1]}")
+    # -------------------
+
     # 1. Get Schema Context
     schema_info = database.get_schema_info()
     
-    # 2. Plan SQL (Mistral)
-    generated_sql = ingestion.planner_agent(request.question, schema_info)
+    # 2. Plan SQL (Mistral) - CHANGED: Passing history now
+    generated_sql = ingestion.planner_agent(request.question, schema_info, request.history)
     
     if generated_sql.startswith("-- Error"):
         return {"type": "error", "message": generated_sql}

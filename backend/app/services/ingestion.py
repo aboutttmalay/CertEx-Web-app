@@ -74,28 +74,59 @@ def generate_sql_script(df, table_name="uploaded_data"):
     except Exception as e:
         return None, str(e)
 
-def planner_agent(user_question, schema_info):
+# --- CHANGED: Added history parameter and context loop ---
+def planner_agent(user_question, schema_info, history=[]):
     """
-    Generates SQL based on the user question and schema.
-    Note: We pass schema_info as an argument to keep it pure.
+    Generates SQL based on the user question, schema, and conversation history.
     """
+    # --- CHANGED: Stronger instruction to use immediate context ---
     system_prompt = f"""
-    You are a SQL Expert (SQLite).
+    You are a readonly SQL Generator for SQLite.
     Table: uploaded_data
-    Columns Detected: {schema_info}
-    User Question: "{user_question}"
-    Return ONLY valid SQL.
+    Columns: {schema_info}
+    Current Question: "{user_question}"
+    
+    CRITICAL RULES:
+    1. Output ONLY a single SQL query. NO text, NO markdown.
+    2. RESOLVE PRONOUNS ('it', 'them', 'that') using the LAST message.
+    3. INHERIT FILTERS: If the user asks to "count them" or "average it" after a filtering query, YOU MUST RE-APPLY THE SAME 'WHERE' CLAUSE.
+       - Bad: SELECT COUNT(*) FROM uploaded_data;
+       - Good: SELECT COUNT(*) FROM uploaded_data WHERE Detected_Error_Code = 'Error';
     """
+
+    messages = [{"role": "system", "content": system_prompt}]
+
+    # Inject History (Limit to last 3 turns to prevent confusion)
+    # We slice history[-6:] to keep only the last 3 user/ai pairs
+    recent_history = history[-6:] 
+    
+    for msg in recent_history:
+        role = "assistant" if msg['role'] == "ai" else "user"
+        content = str(msg.get('content', ''))
+        # Clean out "Executed SQL:" labels from history so AI sees raw code
+        clean_content = re.sub(r"^(Executed SQL:|SQL:|Query:)\s*", "", content).strip()
+        
+        if clean_content and "Error" not in clean_content: 
+            messages.append({"role": role, "content": clean_content})
+
+    messages.append({"role": "user", "content": user_question})
 
     try:
         response = client.chat.completions.create(
             model="mistralai/mistral-7b-instruct", 
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_question}
-            ],
+            messages=messages,
             temperature=0.0
         )
-        return response.choices[0].message.content.replace("```sql", "").replace("```", "").strip()
+        
+        # Cleanup Logic
+        raw = response.choices[0].message.content.strip()
+        clean = raw.replace("```sql", "").replace("```", "").strip()
+        clean = re.sub(r"^(SQL|Query|Executed SQL|Here is):?\s*", "", clean, flags=re.IGNORECASE).strip()
+        
+        # Extract last SELECT
+        match = re.search(r'(SELECT.*)', clean, re.IGNORECASE | re.DOTALL)
+        if match: return match.group(1).strip()
+        return clean
+
     except Exception as e:
         return f"-- Error: {str(e)}"
