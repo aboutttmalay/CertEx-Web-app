@@ -7,7 +7,6 @@ import re
 
 load_dotenv()
 
-# We load environment variables here for the service
 client = OpenAI(
     api_key=os.getenv("ROUTER_API_KEY"),
     base_url="https://openrouter.ai/api/v1"
@@ -15,50 +14,26 @@ client = OpenAI(
 
 def add_detected_columns(df):
     """Add auto-detected columns if they don't already exist."""
-    # Add Detected_Timestamp if not present
     if "Detected_Timestamp" not in df.columns:
         df["Detected_Timestamp"] = datetime.now().isoformat()
-    
-    # Add Detected_Email if not present (detect from data or use placeholder)
     if "Detected_Email" not in df.columns:
         df["Detected_Email"] = df.apply(
-            lambda row: next(
-                (str(val) for val in row if isinstance(val, str) and '@' in val),
-                "unknown@example.com"
-            ),
+            lambda row: next((str(val) for val in row if isinstance(val, str) and '@' in val), "unknown@example.com"),
             axis=1
         )
-    
-    # Add Detected_Error_Code if not present
     if "Detected_Error_Code" not in df.columns:
         df["Detected_Error_Code"] = "NO_ERROR"
-    
-    return df
-
-def smart_parse_dataframe(df):
-    """(Kept same as original) Adaptive Parsing Logic"""
-    if "Raw_Content" not in df.columns: return df
-
-    # ... [Same Regex logic as your uploaded file] ...
-    # (For brevity, assuming the extraction logic is copied here)
-    
     return df
 
 def generate_sql_script(df, table_name="uploaded_data"):
     """Generates CREATE and INSERT statements from a DataFrame."""
     try:
-        # Run smart parser first
-        df = smart_parse_dataframe(df)
-        
-        # Add auto-detected columns
         df = add_detected_columns(df)
-
         type_mapping = {'int64': 'INTEGER', 'float64': 'REAL', 'object': 'TEXT', 'bool': 'INTEGER'}
         columns_sql = [f'"{col}" {type_mapping.get(str(dtype), "TEXT")}' for col, dtype in df.dtypes.items()]
         cols_str = ",\n    ".join(columns_sql)
-        
         create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} (\n    {cols_str}\n);"
-
+        
         insert_statements = []
         for _, row in df.iterrows():
             values = []
@@ -69,64 +44,64 @@ def generate_sql_script(df, table_name="uploaded_data"):
                     values.append(f"'{safe_val}'")
                 else: values.append(str(val))
             insert_statements.append(f"INSERT INTO {table_name} VALUES ({', '.join(values)});")
-
+            
         return f"{create_sql}\n" + "\n".join(insert_statements), None
     except Exception as e:
         return None, str(e)
 
-# --- CHANGED: Added history parameter and context loop ---
+def clean_sql(raw_sql):
+    """Helper to clean the raw LLM output into executable SQL."""
+    clean = raw_sql.replace("```sql", "").replace("```", "").strip()
+    clean = re.sub(r"^(SQL|Query|Executed SQL|Here is):?\s*", "", clean, flags=re.IGNORECASE).strip()
+    return clean
+
 def planner_agent(user_question, schema_info, history=[]):
     """
-    Generates SQL based on the user question, schema, and conversation history.
+    Generates SQL using Mistral 7B with Streaming enabled.
+    Yields chunks of text instead of returning a full string.
     """
-    # --- CHANGED: Stronger instruction to use immediate context ---
+    # --- FIX: Explicitly state the Table Name ---
     system_prompt = f"""
-    You are a readonly SQL Generator for SQLite.
-    Table: uploaded_data
-    Columns: {schema_info}
-    Current Question: "{user_question}"
+    You are a read-only SQL Agent for a SQLite database.
     
-    CRITICAL RULES:
-    1. Output ONLY a single SQL query. NO text, NO markdown.
-    2. RESOLVE PRONOUNS ('it', 'them', 'that') using the LAST message.
-    3. INHERIT FILTERS: If the user asks to "count them" or "average it" after a filtering query, YOU MUST RE-APPLY THE SAME 'WHERE' CLAUSE.
-       - Bad: SELECT COUNT(*) FROM uploaded_data;
-       - Good: SELECT COUNT(*) FROM uploaded_data WHERE Detected_Error_Code = 'Error';
+    The table name is: 'uploaded_data' (ALWAYS use this table name).
+    The columns are: {schema_info}
+    
+    Rules:
+    1. Output ONLY valid SQL. No explanations.
+    2. Use 'LIKE' for text searches.
+    3. Do not use Markdown (```). 
+    4. If the question is unsafe (DROP/DELETE), reply with '-- Error: Unsafe Query'.
+    5. Resolve pronouns (it, them) using the context.
     """
 
     messages = [{"role": "system", "content": system_prompt}]
 
-    # Inject History (Limit to last 3 turns to prevent confusion)
-    # We slice history[-6:] to keep only the last 3 user/ai pairs
+    # Inject History (Limit to last 3 turns)
     recent_history = history[-6:] 
-    
     for msg in recent_history:
-        role = "assistant" if msg['role'] == "ai" else "user"
+        role = "assistant" if msg['role'] == 'ai' else "user"
         content = str(msg.get('content', ''))
-        # Clean out "Executed SQL:" labels from history so AI sees raw code
         clean_content = re.sub(r"^(Executed SQL:|SQL:|Query:)\s*", "", content).strip()
-        
         if clean_content and "Error" not in clean_content: 
             messages.append({"role": role, "content": clean_content})
 
     messages.append({"role": "user", "content": user_question})
 
     try:
-        response = client.chat.completions.create(
+        # --- ENABLE STREAMING ---
+        stream = client.chat.completions.create(
             model="mistralai/mistral-7b-instruct", 
             messages=messages,
-            temperature=0.0
+            temperature=0.0,
+            stream=True  # <--- Key Change: Streaming Enabled
         )
         
-        # Cleanup Logic
-        raw = response.choices[0].message.content.strip()
-        clean = raw.replace("```sql", "").replace("```", "").strip()
-        clean = re.sub(r"^(SQL|Query|Executed SQL|Here is):?\s*", "", clean, flags=re.IGNORECASE).strip()
-        
-        # Extract last SELECT
-        match = re.search(r'(SELECT.*)', clean, re.IGNORECASE | re.DOTALL)
-        if match: return match.group(1).strip()
-        return clean
+        # Yield chunks as they arrive
+        for chunk in stream:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
 
     except Exception as e:
-        return f"-- Error: {str(e)}"
+        yield f"-- Error: {str(e)}"

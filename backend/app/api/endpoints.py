@@ -6,57 +6,35 @@ import json
 import io
 import pandas as pd
 
-# --- CHANGED: Direct imports for flat structure ---
 from app.services import structurer
 from app.services import ingestion
 from app.db import database
 
 router = APIRouter()
-
-# Store uploaded data for download
 uploaded_dataframes = {}
 
 # --- MODULE 1: UNSTRUCTURED CONVERTER ---
-
 @router.post("/analyze-file")
 async def analyze_file(file: UploadFile = File(...)):
-    """
-    Receives a file, runs Auto-Discovery, returns Schema & Preview (first 10 rows).
-    """
     content = await file.read()
     df, error = structurer.load_file_buffer(content, file.filename)
-    
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-    
-    # Run the "Brain" (Auto-Discovery)
+    if error: raise HTTPException(status_code=400, detail=error)
     df = structurer.detect_and_expand_structure(df)
-    
-    # Store full dataframe for download
     uploaded_dataframes['converter'] = df
-    
-    # Return only first 10 rows for preview
-    preview_df = df.head(10)
     return {
         "filename": file.filename,
         "columns": df.columns.tolist(),
-        "preview": preview_df.fillna("").to_dict(orient="records"),  # Only 10 rows
+        "preview": df.head(10).fillna("").to_dict(orient="records"),
         "total_rows": len(df)
     }
 
 @router.get("/download-dataset")
 async def download_dataset(source: str = "converter"):
-    """
-    Download full dataset as CSV.
-    source: 'converter' or 'sql'
-    """
     if source not in uploaded_dataframes or uploaded_dataframes[source] is None:
         raise HTTPException(status_code=400, detail="No dataset available")
-    
     df = uploaded_dataframes[source]
     csv_buffer = io.StringIO()
     df.to_csv(csv_buffer, index=False)
-    
     return StreamingResponse(
         iter([csv_buffer.getvalue()]),
         media_type="text/csv",
@@ -64,92 +42,70 @@ async def download_dataset(source: str = "converter"):
     )
 
 @router.post("/transform-data")
-async def transform_data(
-    file: UploadFile = File(...), 
-    mapping: str = Form(...) # JSON string of mapping rules
-):
-    """
-    Receives file + mapping rules, returns the Cleaned CSV.
-    """
-    # 1. Load File
+async def transform_data(file: UploadFile = File(...), mapping: str = Form(...)):
     content = await file.read()
     df, _ = structurer.load_file_buffer(content, file.filename)
-    
-    # 2. Parse Mapping JSON from React
-    try:
-        column_mapping = json.loads(mapping)
-    except:
-        raise HTTPException(status_code=400, detail="Invalid mapping JSON")
-    
-    # 3. Apply Deterministic Logic
-    # Run auto-discovery first in case user mapped a detected column
+    try: column_mapping = json.loads(mapping)
+    except: raise HTTPException(status_code=400, detail="Invalid mapping JSON")
     df = structurer.detect_and_expand_structure(df) 
     clean_df, logs = structurer.clean_and_structure_data(df, column_mapping)
-    
-    # 4. Return as downloadable CSV
     stream = io.StringIO()
     clean_df.to_csv(stream, index=False)
-    response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
-    response.headers["Content-Disposition"] = "attachment; filename=cleaned_data.csv"
-    return response
+    return StreamingResponse(
+        iter([stream.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cleaned_data.csv"}
+    )
 
 # --- MODULE 2: SQL INTELLIGENCE ---
-
 @router.post("/ingest-sql")
 async def ingest_sql(file: UploadFile = File(...)):
-    """
-    Uploads a file directly to the SQLite Database.
-    """
     content = await file.read()
     df, error = structurer.load_file_buffer(content, file.filename)
-    
     if error: raise HTTPException(status_code=400, detail=error)
-    
-    # Generate SQL Script
     script, err = ingestion.generate_sql_script(df)
     if err: raise HTTPException(status_code=500, detail=err)
-    
-    # Run Script
     success, msg = database.run_script(script)
     if not success: raise HTTPException(status_code=500, detail=msg)
-    
     return {"status": "success", "message": "Database built successfully"}
 
-# --- CHANGED: Updated Model to accept History ---
 class QueryRequest(BaseModel):
     question: str
-    history: List[Dict[str, Any]] = []  # Defaults to empty list, accepts any data type
+    history: List[Dict[str, Any]] = [] 
 
 @router.post("/ask-agent")
 async def ask_agent(request: QueryRequest):
     """
-    The Chatbot Endpoint with Memory.
+    Streams: SQL Text -> Separator -> JSON Data
     """
-    # --- DEBUG PRINT ---
-    print(f"\n🧠 INCOMING REQUEST:")
-    print(f"Question: {request.question}")
-    print(f"History Length: {len(request.history)}")
-    if request.history:
-        print(f"Last Context: {request.history[-1]}")
-    # -------------------
-
-    # 1. Get Schema Context
     schema_info = database.get_schema_info()
     
-    # 2. Plan SQL (Mistral) - CHANGED: Passing history now
-    generated_sql = ingestion.planner_agent(request.question, schema_info, request.history)
-    
-    if generated_sql.startswith("-- Error"):
-        return {"type": "error", "message": generated_sql}
+    async def generate_stream():
+        full_sql_accumulator = ""
         
-    # 3. Execute SQL
-    df, error = database.execute_query(generated_sql)
-    
-    if error:
-        return {"type": "sql_error", "message": error, "sql": generated_sql}
+        # 1. Stream the Thought Process (SQL Generation)
+        for chunk in ingestion.planner_agent(request.question, schema_info, request.history):
+            full_sql_accumulator += chunk
+            yield chunk 
         
-    return {
-        "type": "data",
-        "sql": generated_sql,
-        "results": df.fillna("").to_dict(orient="records")
-    }
+        # 2. Execution Phase
+        clean_sql = ingestion.clean_sql(full_sql_accumulator)
+        yield "|||RESULT_START|||"
+        
+        if clean_sql.startswith("-- Error"):
+            yield json.dumps({"type": "error", "message": clean_sql})
+            return
+
+        df, error = database.execute_query(clean_sql)
+        
+        if error:
+            yield json.dumps({"type": "sql_error", "message": error, "sql": clean_sql})
+        else:
+            response_data = {
+                "type": "success",
+                "sql": clean_sql,
+                "columns": df.columns.tolist(),
+                "results": df.fillna("").to_dict(orient='records')
+            }
+            yield json.dumps(response_data)
+
+    return StreamingResponse(generate_stream(), media_type="text/plain")

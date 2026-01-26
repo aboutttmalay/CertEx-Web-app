@@ -26,6 +26,7 @@ wheels/
 # Database
 *.db
 certex_data.db
+certex_data.db-journal
 
 # Node
 node_modules/
