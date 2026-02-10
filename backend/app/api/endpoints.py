@@ -8,12 +8,17 @@ import pandas as pd
 
 from app.services import structurer
 from app.services import ingestion
+from app.services import reflexion   
+from app.services import ghost_factory  
 from app.db import database
 
 router = APIRouter()
 uploaded_dataframes = {}
 
-# --- MODULE 1: UNSTRUCTURED CONVERTER ---
+# ==========================================
+#  MODULE 1: UNSTRUCTURED CONVERTER
+# ==========================================
+
 @router.post("/analyze-file")
 async def analyze_file(file: UploadFile = File(...)):
     content = await file.read()
@@ -56,7 +61,10 @@ async def transform_data(file: UploadFile = File(...), mapping: str = Form(...))
         headers={"Content-Disposition": "attachment; filename=cleaned_data.csv"}
     )
 
-# --- MODULE 2: SQL INTELLIGENCE ---
+# ==========================================
+#  MODULE 2: SQL INTELLIGENCE & AGENTS
+# ==========================================
+
 @router.post("/ingest-sql")
 async def ingest_sql(file: UploadFile = File(...)):
     content = await file.read()
@@ -68,6 +76,8 @@ async def ingest_sql(file: UploadFile = File(...)):
     if not success: raise HTTPException(status_code=500, detail=msg)
     return {"status": "success", "message": "Database built successfully"}
 
+# --- INTELLIGENCE ENDPOINT (Updated with Reflexion) ---
+
 class QueryRequest(BaseModel):
     question: str
     history: List[Dict[str, Any]] = [] 
@@ -75,37 +85,31 @@ class QueryRequest(BaseModel):
 @router.post("/ask-agent")
 async def ask_agent(request: QueryRequest):
     """
-    Streams: SQL Text -> Separator -> JSON Data
+    Uses the Reflexion Engine to self-correct SQL errors.
+    Replaces the old manual stream generator with the reflexion loop.
     """
     schema_info = database.get_schema_info()
     
-    async def generate_stream():
-        full_sql_accumulator = ""
-        
-        # 1. Stream the Thought Process (SQL Generation)
-        for chunk in ingestion.planner_agent(request.question, schema_info, request.history):
-            full_sql_accumulator += chunk
-            yield chunk 
-        
-        # 2. Execution Phase
-        clean_sql = ingestion.clean_sql(full_sql_accumulator)
-        yield "|||RESULT_START|||"
-        
-        if clean_sql.startswith("-- Error"):
-            yield json.dumps({"type": "error", "message": clean_sql})
-            return
+    # Delegate the logic to the Reflexion Service
+    return StreamingResponse(
+        reflexion.reflection_loop(request.question, schema_info, request.history), 
+        media_type="text/plain"
+    )
 
-        df, error = database.execute_query(clean_sql)
-        
-        if error:
-            yield json.dumps({"type": "sql_error", "message": error, "sql": clean_sql})
-        else:
-            response_data = {
-                "type": "success",
-                "sql": clean_sql,
-                "columns": df.columns.tolist(),
-                "results": df.fillna("").to_dict(orient='records')
-            }
-            yield json.dumps(response_data)
+# --- GHOST FACTORY ENDPOINT (New) ---
 
-    return StreamingResponse(generate_stream(), media_type="text/plain")
+@router.post("/run-ghost-factory")
+async def run_ghost_factory():
+    """
+    Triggers the Teacher Model to generate a Golden Dataset.
+    """
+    schema_info = database.get_schema_info()
+    if schema_info == "unknown":
+        raise HTTPException(status_code=400, detail="No database active. Upload a file first.")
+        
+    dataset, error = ghost_factory.generate_synthetic_dataset(schema_info, num_samples=5)
+    
+    if error:
+        raise HTTPException(status_code=500, detail=f"Factory Error: {error}")
+        
+    return {"status": "success", "dataset": dataset}

@@ -6,7 +6,6 @@ const ConverterDashboard = () => {
   const [file, setFile] = useState(null);
   const [schema, setSchema] = useState(null); // Stores detected columns
   const [mappings, setMappings] = useState([{ target: '', source: '', rule: 'text' }]); // Form state
-  const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false); // Toggle for full preview
 
@@ -77,7 +76,6 @@ const ConverterDashboard = () => {
       link.setAttribute('download', 'certex_structured_data.csv');
       document.body.appendChild(link);
       link.click();
-      setResults("Success");
     } catch (err) {
       alert("Conversion failed");
     } finally {

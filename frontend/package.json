@@ -7,7 +7,7 @@
     "lucide-react": "^0.290.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "^5.0.1",
+    "react-scripts": "5.0.1",
     "recharts": "^2.9.0",
     "sonner": "^2.0.7",
     "web-vitals": "^2.1.0"
