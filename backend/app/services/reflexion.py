@@ -2,7 +2,9 @@ import json
 from app.services import ingestion
 from app.db import database
 
-async def reflection_loop(question, schema_info, history, max_retries=3):
+MAX_REFLEXION_RETRIES = 3
+
+async def reflection_loop(question, schema_info, history, max_retries=MAX_REFLEXION_RETRIES):
     """
     The Reflexion Engine:
     Stream Thoughts -> Generate SQL -> Execute -> Self-Correct if needed.

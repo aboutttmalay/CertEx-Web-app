@@ -7,6 +7,7 @@ python-multipart>=0.0.9   # Required for File Uploads
 pandas>=2.2.0
 numpy>=1.26.0
 openpyxl>=3.1.2           # Required for reading Excel files
+pyarrow>=15.0.0           # Required for reading Parquet files
 
 # --- AI & LLM ---
 openai>=1.12.0            # For connecting to Mistral/OpenRouter

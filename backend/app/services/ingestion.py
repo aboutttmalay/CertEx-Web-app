@@ -4,6 +4,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
 import re
+from app.config import settings
 
 load_dotenv()
 
@@ -11,14 +12,30 @@ load_dotenv()
 #  CONFIGURATION: LOCAL (OLLAMA)
 # ==========================================
 client = OpenAI(
-    api_key="ollama",                    
-    base_url="http://localhost:11434/v1" 
+    api_key=settings.OPENAI_API_KEY,
+    base_url=settings.OPENAI_BASE_URL,
 )
-MODEL_NAME = "mistral"  # or "llama3.2:3b"
+MODEL_NAME = settings.OPENAI_MODEL
 
 # ==========================================
 #  LOGIC
 # ==========================================
+
+def check_model_connection():
+    """Validate that the configured model endpoint is reachable before streaming."""
+    try:
+        # This probes the OpenAI-compatible endpoint and fails fast if service is down.
+        client.models.list()
+        return True, None
+    except Exception as e:
+        message = (
+            f"Cannot connect to model endpoint at {settings.OPENAI_BASE_URL}. "
+            f"Configured model: {MODEL_NAME}. "
+            "Start Ollama (`ollama serve`) and ensure the model exists "
+            f"(`ollama pull {MODEL_NAME}`), or update OPENAI_BASE_URL/OPENAI_MODEL in backend/.env. "
+            f"Underlying error: {str(e)}"
+        )
+        return False, message
 
 def add_detected_columns(df):
     """Add auto-detected columns if they don't already exist."""
@@ -66,12 +83,21 @@ def clean_sql(raw_text):
     if match:
         return match.group(1).strip()
     
-    # 2. Fallback: If no markdown, just clean the whole string
+    # 2. Fallback: Extract first SQL statement ending with semicolon
+    statement_match = re.search(
+        r"((SELECT|WITH|PRAGMA)\b[\s\S]*?;)",
+        raw_text,
+        re.IGNORECASE,
+    )
+    if statement_match:
+        return statement_match.group(1).strip()
+
+    # 3. Last-resort cleanup
     clean = raw_text.replace("```sql", "").replace("```", "").strip()
     clean = re.sub(r"^(SQL|Query|Executed SQL|Here is):?\s*", "", clean, flags=re.IGNORECASE).strip()
     return clean
 
-def planner_agent(user_question, schema_info, history=[]):
+def planner_agent(user_question, schema_info, history=None):
     """
     Generates Reasoning + SQL using the local model.
     """
@@ -99,7 +125,10 @@ def planner_agent(user_question, schema_info, history=[]):
     messages = [{"role": "system", "content": system_prompt}]
 
     # Inject History
-    recent_history = history[-6:] 
+    if history is None:
+        history = []
+
+    recent_history = history[-6:]
     for msg in recent_history:
         role = "assistant" if msg['role'] == 'ai' else "user"
         content = str(msg.get('content', ''))

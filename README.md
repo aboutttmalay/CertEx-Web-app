@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Python](https://img.shields.io/badge/python-3.10%2B-blue) ![React](https://img.shields.io/badge/react-18.2-cyan) ![Status](https://img.shields.io/badge/status-Enterprise%20Ready-green)
 
-**CertEx** is a local-first intelligence layer that converts unstructured enterprise data (PDFs, CSVs, Logs) into structured SQL databases on the fly. It features a **Self-Correcting "Reflexion" Engine** that guarantees accurate SQL generation and a **"Ghost Factory"** for adversarial stress-testing.
+**CertEx** is a local-first intelligence layer that converts enterprise data into structured SQL databases on the fly. It features a **Self-Correcting "Reflexion" Engine** that guarantees accurate SQL generation and a **"Ghost Factory"** for adversarial stress-testing.
 
 > **Why CertEx?** Unlike generic AI wrappers, CertEx runs fully locally (via Ollama/Mistral) ensures **Zero Data Leakage**, making it compliant for Finance, Healthcare, and Audit sectors.
 
@@ -37,10 +37,11 @@ CertEx operates on a "Brain-Translator-Hands" architecture designed for mathemat
 
 ### 🖥️ Enterprise Frontend
 
+- **Workflow Studio:** OpenAI-style pipeline view showing how CertEx processes data from upload to validated SQL answers.
 - **Collapsible Navigation:** A responsive, space-efficient sidebar with smooth `transition-all` animations.
 - **Persistent State:** Chat history and database ingestion state are saved via `localStorage`, surviving page refreshes.
 - **Unified Data Preview:** Live, low-latency preview of large datasets (limited to 10 rows for speed) with **Full CSV Download** capability.
-- **Drag-and-Drop Ingestion:** Instant processing of Excel/CSV files into SQLite.
+- **Multi-Format Ingestion:** Instant processing of `.csv`, `.tsv`, `.xls`, `.xlsx`, `.json`, `.jsonl`, `.ndjson`, `.txt`, and `.parquet` into SQLite.
 
 ### 🔐 Security & Compliance
 
@@ -76,8 +77,16 @@ pip install -r requirements.txt
 # Create a .env file. For local use, point to Ollama:
 # OPENAI_BASE_URL=http://localhost:11434/v1
 # OPENAI_API_KEY=ollama
+# OPENAI_MODEL=mistral
+# CERTEX_MAX_UPLOAD_MB=25
+# CERTEX_CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 
-# 3. Start the Server
+# 3. Start local model server (required for Reflexion)
+# In a separate terminal:
+# ollama serve
+# ollama pull mistral
+
+# 4. Start the Server
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -92,6 +101,8 @@ cd frontend
 npm install
 
 # 2. Start the React App
+# Optional for non-local deployments:
+# set REACT_APP_API_BASE_URL=http://your-api-host:8000
 npm start
 ```
 
@@ -104,10 +115,34 @@ UI running at: http://localhost:3000
 | Endpoint | Method | Description |
 | :--- | :--- | :--- |
 | `/api/analyze-file` | POST | Ingests raw files and returns schema preview. |
+| `/api/transform-data` | POST | Applies deterministic field mapping + validation and returns cleaned CSV. |
 | `/api/ingest-sql` | POST | Builds the SQLite database and runs auto-discovery. |
 | `/api/ask-agent` | POST | Reflexion Engine endpoint. Streams reasoning + SQL + Data. |
 | `/api/run-ghost-factory` | POST | Triggers the Teacher Model to generate synthetic training data. |
 | `/api/download-dataset` | GET | Exports the full cleaned dataset as CSV. |
+| `/api/capabilities` | GET | Returns runtime capabilities (formats, limits, enabled modules). |
+| `/api/workflow` | GET | Returns OpenAI-style CertEx stage definitions for the frontend. |
+
+---
+
+## 🧭 CertEx Workflow (OpenAI-Style)
+
+1. **Upload:** Accept enterprise dataset files and parse into DataFrame.
+2. **Auto-Structure:** Detect useful fields like timestamps, emails, and error codes.
+3. **Build SQL:** Generate deterministic schema and load ephemeral SQLite table.
+4. **Reason + Execute:** Use Reflexion to generate SQL, execute, and self-correct on failure.
+5. **Simulate:** Run Ghost Factory to generate synthetic edge-case prompts for validation.
+
+---
+
+## 🏭 Production Readiness Checklist
+
+- Configure `.env` with model endpoint, API key, model name, upload limit, and CORS policy.
+- Set `REACT_APP_API_BASE_URL` in frontend for environment-specific backend routing.
+- Deploy backend behind a reverse proxy (Nginx/Caddy) with request limits and TLS.
+- Add API auth (JWT/API key gateway) before internet exposure.
+- Store structured logs and metrics (request latency, failed SQL retries, ingestion failures).
+- Run load tests with large CSV/Parquet datasets before go-live.
 
 ---
 

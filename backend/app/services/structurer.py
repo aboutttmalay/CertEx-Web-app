@@ -2,15 +2,60 @@ import pandas as pd
 import re
 import io
 
+
+SUPPORTED_FILE_EXTENSIONS = {
+    ".csv",
+    ".tsv",
+    ".txt",
+    ".xls",
+    ".xlsx",
+    ".json",
+    ".jsonl",
+    ".ndjson",
+    ".parquet",
+}
+
+
+def supported_extensions():
+    return sorted(SUPPORTED_FILE_EXTENSIONS)
+
+
+def _has_ext(filename: str, *extensions: str) -> bool:
+    name = (filename or "").lower()
+    return name.endswith(extensions)
+
 def load_file_buffer(file_content: bytes, filename: str):
     """Loads bytes content into a Pandas DataFrame."""
     try:
-        if filename.endswith('.csv'):
+        if _has_ext(filename, '.csv'):
             df = pd.read_csv(io.BytesIO(file_content))
-        elif filename.endswith(('.xls', '.xlsx')):
+        elif _has_ext(filename, '.tsv'):
+            df = pd.read_csv(io.BytesIO(file_content), sep='\t')
+        elif _has_ext(filename, '.txt'):
+            # Treat txt as delimiter-detected table/log-like text.
+            df = pd.read_csv(io.BytesIO(file_content), sep=None, engine='python')
+        elif _has_ext(filename, '.xls', '.xlsx'):
             df = pd.read_excel(io.BytesIO(file_content))
+        elif _has_ext(filename, '.json'):
+            raw = io.BytesIO(file_content)
+            try:
+                df = pd.read_json(raw)
+            except ValueError:
+                raw.seek(0)
+                df = pd.read_json(raw, lines=True)
+        elif _has_ext(filename, '.jsonl', '.ndjson'):
+            df = pd.read_json(io.BytesIO(file_content), lines=True)
+        elif _has_ext(filename, '.parquet'):
+            df = pd.read_parquet(io.BytesIO(file_content))
         else:
-            return None, "Unsupported file format. Please upload CSV or Excel."
+            return None, (
+                "Unsupported file format. Supported types: "
+                + ", ".join(supported_extensions())
+            )
+
+        if df is None or df.empty:
+            return None, "Dataset is empty or could not be parsed into tabular rows."
+
         return df, None
     except Exception as e:
         return None, str(e)

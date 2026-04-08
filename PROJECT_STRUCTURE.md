@@ -7,7 +7,58 @@ CertEx is a full-stack web application built with Python FastAPI backend and Rea
 
 ## Directory Structure
 
-certex-web-app/ ├── 📂 backend/ # PYTHON (The Brain) - FastAPI │ ├── 📂 app/ │ │ ├── 📂 api/ # API Routes (The "bridge" to frontend) │ │ │ ├── endpoints.py # Define /analyze-file, /ask-agent, /run-ghost-factory │ │ ├── 📂 core/ # Config & Security │ │ │ ├── config.py # Load .env, API keys here │ │ ├── 📂 services/ # BUSINESS LOGIC (The Engines) │ │ │ ├── reflexion.py # [NEW] Runtime Self-Correction Engine │ │ │ ├── ghost_factory.py # [NEW] Synthetic Data Generator │ │ │ ├── structurer.py # Parsing certificate structures │ │ │ ├── ingestion.py # ETL & AI Client Integration │ │ ├── 📂 db/ # DATABASE │ │ │ ├── database.py # Database connection and query logic │ │ ├── main.py # FastAPI App Entry Point │ ├── .env # API Keys (Ollama/OpenRouter) │ ├── requirements.txt # Python dependencies │ └── certex_data.db # Local SQLite DB │ ├── 📂 frontend/ # JAVASCRIPT (The Face) - React │ ├── 📂 public/ # Icons, index.html │ ├── 📂 src/ │ │ ├── 📂 components/ # UI Building Blocks │ │ │ ├── Sidebar.jsx # Collapsible Navigation │ │ │ ├── SqlChat.jsx # Main Intelligence Interface │ │ │ ├── ConverterDashboard.jsx # Unstructured Data ETL │ │ ├── 📂 api/ # Frontend API Calls │ │ │ ├── client.js # Config for axios │ │ ├── App.js # Main Layout & Routing │ │ ├── index.css # Tailwind/CSS Styles │ ├── package.json # Node.js dependencies │ └── .gitignore │ └── README.md # Documentation
+```
+CertEx-Web-app/
+│
+├── 📂 backend/                      # Python FastAPI Backend (The Brain)
+│   ├── 📂 app/
+│   │   ├── 📂 api/                  # API Routes (Bridge to Frontend)
+│   │   │   ├── endpoints.py         # REST endpoints: /analyze-file, /ask-agent, /run-ghost-factory
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── 📂 db/                   # Database Layer
+│   │   │   ├── database.py          # SQLite connection & query logic
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── 📂 services/             # Business Logic (The Engines)
+│   │   │   ├── reflexion.py         # Runtime Self-Correction Engine
+│   │   │   ├── ghost_factory.py     # Synthetic Data Generator
+│   │   │   ├── structurer.py        # Certificate structure parsing
+│   │   │   ├── ingestion.py         # ETL & AI Client Integration
+│   │   │   └── __init__.py
+│   │   │
+│   │   ├── main.py                  # FastAPI App Entry Point
+│   │   └── __init__.py
+│   │
+│   ├── requirements.txt             # Python dependencies
+│   ├── start_server.bat             # Server startup script
+│   └── .env                         # API Keys (Ollama/OpenRouter)
+│
+├── 📂 frontend/                     # React Frontend (The Face)
+│   ├── 📂 public/
+│   │   └── index.html               # HTML template
+│   │
+│   ├── 📂 src/
+│   │   ├── 📂 components/           # UI Building Blocks
+│   │   │   ├── SqlChat.jsx          # Main Intelligence Interface
+│   │   │   ├── Sidebar.jsx          # Collapsible Navigation
+│   │   │   ├── ConverterDashboard.jsx # Unstructured Data ETL
+│   │   │   └── SkeletonChat.jsx     # Loading skeleton UI
+│   │   │
+│   │   ├── App.js                   # Main Layout & Routing
+│   │   ├── index.js                 # React Entry Point
+│   │   └── index.css                # Tailwind/CSS Styles
+│   │
+│   ├── package.json                 # Node.js dependencies
+│   ├── package-lock.json            # Dependency lock file
+│   └── tailwind.config.js           # Tailwind CSS configuration
+│
+├── README.md                        # Main documentation
+├── PROJECT_STRUCTURE.md             # This file
+├── CHANGELOG.md                     # Version history
+├── FRONTEND_UPDATES.md              # Frontend change log
+└── LICENSE                          # License information
+```
 
 
 ---
