@@ -1,7 +1,13 @@
+<<<<<<< HEAD
 import React, { useState } from 'react';
 import axios from 'axios';
 import { CheckCircle, X, Upload, ChevronDown, Download, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { API_ROUTES } from '../config';
+=======
+import React, { useState, useRef } from 'react';
+import axios from 'axios';
+import { CheckCircle, X, UploadCloud, File, ChevronDown, Loader2 } from 'lucide-react';
+>>>>>>> 849a592083c32d2c5ea7e861292db35b51d51a91
 
 const ConverterDashboard = () => {
   const [file, setFile] = useState(null);
@@ -9,15 +15,39 @@ const ConverterDashboard = () => {
   const [mappings, setMappings] = useState([{ target: '', source: '', rule: 'text' }]); // Form state
   const [loading, setLoading] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+<<<<<<< HEAD
+=======
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef(null);
+>>>>>>> 849a592083c32d2c5ea7e861292db35b51d51a91
 
   // Handle download
   const handleDownloadDataset = () => {
     window.location.href = `${API_ROUTES.downloadDataset}?source=converter`;
   };
 
-  // 1. Handle File Upload
-  const handleFileUpload = async (e) => {
-    const uploadedFile = e.target.files[0];
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => setIsDragging(false);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+    }
+  };
+
+  const processFile = async (uploadedFile) => {
     setFile(uploadedFile);
     setLoading(true);
     
@@ -25,10 +55,17 @@ const ConverterDashboard = () => {
     formData.append('file', uploadedFile);
 
     try {
+<<<<<<< HEAD
       const res = await axios.post(API_ROUTES.analyzeFile, formData);
       setSchema(res.data);
     } catch (err) {
       console.error('Upload Error Details:', err);
+=======
+      const res = await axios.post('http://localhost:8000/api/analyze-file', formData);
+      setSchema(res.data);
+    } catch (err) {
+      console.error("Upload Error Details:", err);
+>>>>>>> 849a592083c32d2c5ea7e861292db35b51d51a91
       alert(`Error analyzing file: ${err.message}`);
     } finally {
       setLoading(false);
@@ -85,6 +122,7 @@ const ConverterDashboard = () => {
   };
 
   return (
+<<<<<<< HEAD
     <div className="space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -94,6 +132,60 @@ const ConverterDashboard = () => {
             <p className="mt-1 text-sm text-slate-500">
               Upload raw datasets, map target columns, and produce validated export-ready data.
             </p>
+=======
+    <div className="max-w-5xl mx-auto">
+      <h2 className="text-2xl font-bold mb-2">📄 Deterministic Data Structurer</h2>
+      <p className="text-slate-500 mb-8">Transform messy files into strict, validated formats.</p>
+
+      {/* Step 1: Upload */}
+      <div 
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current.click()}
+        className={`relative overflow-hidden bg-white p-10 rounded-2xl border-2 border-dashed transition-all cursor-pointer group mb-8 flex flex-col items-center justify-center min-h-[200px]
+          ${isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'}`}
+      >
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileSelect} 
+          className="hidden" 
+          accept=".csv,.xlsx,.xls,.json,.xml,.pdf,.txt" 
+        />
+        
+        {loading ? (
+          <div className="flex flex-col items-center animate-in fade-in duration-300">
+            <Loader2 className="text-blue-500 mb-4 animate-spin" size={40} />
+            <span className="text-sm font-semibold text-slate-700">Analyzing schema...</span>
+          </div>
+        ) : file ? (
+          <div className="flex flex-col items-center animate-in zoom-in-95 duration-300">
+            <div className="bg-green-100 p-3 rounded-full mb-3">
+              <CheckCircle className="text-green-600" size={32}/>
+            </div>
+            <span className="text-sm font-bold text-slate-800">{file.name}</span>
+            <span className="text-xs text-slate-500 mt-1">Click or drag to replace</span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <div className="bg-blue-50 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
+              <UploadCloud className="text-blue-600" size={36} />
+            </div>
+            <span className="text-base font-bold text-slate-700 mb-1">Upload unstructured data</span>
+            <span className="text-sm text-slate-500 text-center max-w-xs">
+              Drag and drop your files here, or click to browse. Supports CSV, Excel, JSON, XML, PDF, and TXT.
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Step 2: Detected Schema Table (Replaces st.dataframe) */}
+      {schema && (
+        <div className="mb-8 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+          <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 font-medium text-sm text-slate-700">
+            ℹ️ 1. Detected Schema
+>>>>>>> 849a592083c32d2c5ea7e861292db35b51d51a91
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
             <span className="font-semibold">Output:</span> clean CSV with deterministic constraints.
